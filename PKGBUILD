@@ -7,7 +7,7 @@
 # Contributor: Jakub Schmidtke <sjakub@gmail.com>
 
 pkgname=firefox-wayland-hg
-_pkgname=firefox
+_pkgname=firefox-nightly
 pkgver=r659341.4e0bb3e
 pkgrel=1
 pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, release branding, targeting Wayland)"
@@ -80,7 +80,7 @@ conflicts=('firefox')
 provides=('firefox')
 source=(
   hg+$_repo
-  $pkgname.desktop
+  $_pkgname.desktop
   identity-icons-brand.svg
   firefox-install-dir.patch
 )
@@ -129,20 +129,21 @@ pkgver() {
 prepare() {
   mkdir mozbuild
   cd mozilla-unified
-
-  # EVENT__SIZEOF_TIME_T does not exist on upstream libevent, see event-config.h.cmake
-  sed -i '/CHECK_EVENT_SIZEOF(TIME_T, time_t);/d' ipc/chromium/src/base/message_pump_libevent.cc
-
+ 
+  # Change install dir from 'firefox' to 'firefox-nightly'
+  patch -Np1 -i ../firefox-install-dir.patch
+  
   echo -n "$_google_api_key" >google-api-key
   echo -n "$_mozilla_api_key" >mozilla-api-key
 
   #
   # If you want to disable LTO/PGO (compile too long), delete the lines below beginning with
-  # `ac_add_options --enable-lto' and ending with 'export RANLIB=llvm-ranlib`
+  #`ac_add_options --enable-lto' and ending with 'export RANLIB=llvm-ranlib`
   #
 
-  cat >.mozconfig <<END
+  cat >../mozconfig <<END
 ac_add_options --enable-application=browser
+mk_add_options MOZ_OBJDIR=${PWD@Q}/obj
 
 ac_add_options --prefix=/usr
 ac_add_options --enable-release
@@ -153,6 +154,7 @@ ac_add_options --enable-linker=lld
 ac_add_options --disable-elf-hack
 ac_add_options --disable-bootstrap
 ac_add_options --disable-tests
+ac_add_options --with-wasi-sysroot=/usr/share/wasi-sysroot
 ac_add_options --enable-lto
 ac_add_options MOZ_PGO=1
 export CC=clang
@@ -161,25 +163,21 @@ export AR=llvm-ar
 export NM=llvm-nm
 export RANLIB=llvm-ranlib
 
-# wasi sdk
-ac_add_options --with-wasi-sysroot=/usr/share/wasi-sysroot
-
 # Branding
-ac_add_options --enable-official-branding
-ac_add_options --enable-update-channel=release
+ac_add_options --with-branding=browser/branding/nightly
+ac_add_options --enable-update-channel=nightly
 ac_add_options --with-distribution-id=org.archlinux
 ac_add_options --with-unsigned-addon-scopes=app,system
+ac_add_options --allow-addon-sideload
 export MOZILLA_OFFICIAL=1
-export MOZ_APP_REMOTINGNAME=${_pkgname//-/}
-export MOZ_TELEMETRY_REPORTING=1
-export MOZ_REQUIRE_SIGNING=1
+export MOZ_APP_REMOTINGNAME=${pkgname//-/}
 
 # Keys
 ac_add_options --with-google-location-service-api-keyfile=${PWD@Q}/google-api-key
 ac_add_options --with-google-safebrowsing-api-keyfile=${PWD@Q}/google-api-key
 ac_add_options --with-mozilla-api-keyfile=${PWD@Q}/mozilla-api-key
 
-# System libraries
+# System Libraries
 ac_add_options --with-system-nspr
 ac_add_options --with-system-nss
 ac_add_options --with-system-libvpx
@@ -189,17 +187,12 @@ ac_add_options --with-system-zlib
 ac_add_options --with-system-jpeg
 
 # Features
-ac_add_options --enable-pulseaudio
 ac_add_options --enable-alsa
 ac_add_options --enable-jack
 ac_add_options --enable-crashreporter
 ac_add_options --disable-updater
 ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
 END
-
-  # See https://github.com/glandium/git-cinnabar/issues/311
-  cd "$SRCDEST/mozilla-unified"
-  git config remote.origin.mirror false
 }
 
 build() {
@@ -214,17 +207,48 @@ build() {
   # LTO/PGO needs more open files
   ulimit -n 4096
 
-  xvfb-run -a -n 97 -s "-screen 0 1600x1200x24" ./mach build
+  # Do 3-tier PGO
+  echo "Building instrumented browser..."
+  cat >.mozconfig ../mozconfig - <<END
+ac_add_options --enable-profile-generate=cross
+END
+  ./mach build
+
+  echo "Profiling instrumented browser..."
+  ./mach package
+  LLVM_PROFDATA=llvm-profdata \
+    JARLOG_FILE="$PWD/jarlog" \
+    xvfb-run -s "-screen 0 1920x1080x24 -nolisten local" \
+    ./mach python build/pgo/profileserver.py
+
+  stat -c "Profile data found (%s bytes)" merged.profdata
+  test -s merged.profdata
+
+  stat -c "Jar log found (%s bytes)" jarlog
+  test -s jarlog
+
+  echo "Removing instrumented browser..."
+  ./mach clobber
+
+  echo "Building optimized browser..."
+  cat >.mozconfig ../mozconfig - <<END
+ac_add_options --enable-lto=cross
+ac_add_options --enable-profile-use=cross
+ac_add_options --with-pgo-profile-path=${PWD@Q}/merged.profdata
+ac_add_options --with-pgo-jarlog=${PWD@Q}/jarlog
+END
+  ./mach build
+
+  echo "Building symbol archive..."
   ./mach buildsymbols
 }
 
 package() {
   cd mozilla-unified
   DESTDIR="$pkgdir" ./mach install
-  find . -name '*crashreporter-symbols.zip' -exec cp -fvt "$startdir" {} +
 
-  _vendorjs="$pkgdir/usr/lib/$_pkgname/browser/defaults/preferences/vendor.js"
-  install -Dm644 /dev/stdin "$_vendorjs" <<END
+  local vendorjs="$pkgdir/usr/lib/$_pkgname/browser/defaults/preferences/vendor.js"
+  install -Dvm644 /dev/stdin "$vendorjs" <<END
 // Use LANG environment variable to choose locale
 pref("intl.locale.requested", "");
 
@@ -234,13 +258,15 @@ pref("spellchecker.dictionary_path", "/usr/share/hunspell");
 // Disable default browser checking.
 pref("browser.shell.checkDefaultBrowser", false);
 
-// Don't disable our bundled extensions in the application directory
+// Don't disable extensions in the application directory
 pref("extensions.autoDisableScopes", 11);
-pref("extensions.shownSelectionUI", true);
+
+// Enable GNOME Shell search provider
+pref("browser.gnome-search-provider.enabled", true);
 END
 
-  _distini="$pkgdir/usr/lib/$_pkgname/distribution/distribution.ini"
-  install -Dm644 /dev/stdin "$_distini" <<END
+  local distini="$pkgdir/usr/lib/$_pkgname/distribution/distribution.ini"
+  install -Dvm644 /dev/stdin "$distini" <<END
 [Global]
 id=archlinux
 version=1.0
@@ -252,30 +278,54 @@ app.distributor.channel=$_pkgname
 app.partner.archlinux=archlinux
 END
 
+  local i theme=nightly
   for i in 16 22 24 32 48 64 128 256; do
-    install -Dm644 browser/branding/official/default$i.png \
+    install -Dvm644 browser/branding/$theme/default$i.png \
       "$pkgdir/usr/share/icons/hicolor/${i}x${i}/apps/$_pkgname.png"
   done
-  install -Dm644 browser/branding/official/content/about-logo.png \
+  install -Dvm644 browser/branding/$theme/content/about-logo.png \
     "$pkgdir/usr/share/icons/hicolor/192x192/apps/$_pkgname.png"
-  install -Dm644 browser/branding/official/content/about-logo@2x.png \
+  install -Dvm644 browser/branding/$theme/content/about-logo@2x.png \
     "$pkgdir/usr/share/icons/hicolor/384x384/apps/$_pkgname.png"
-  install -Dm644 ../firefox-symbolic.svg \
+  install -Dvm644 browser/branding/$theme/content/about-logo.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/$_pkgname.svg"
+  install -Dvm644 ../identity-icons-brand.svg \
     "$pkgdir/usr/share/icons/hicolor/symbolic/apps/$_pkgname-symbolic.svg"
 
-  install -Dm644 ../$_pkgname.desktop \
+  install -Dvm644 ../$_pkgname.desktop \
     "$pkgdir/usr/share/applications/$_pkgname.desktop"
 
   # Install a wrapper to avoid confusion about binary path
-  install -Dm755 /dev/stdin "$pkgdir/usr/bin/$_pkgname" <<END
+  install -Dvm755 /dev/stdin "$pkgdir/usr/bin/$_pkgname" <<END
 #!/bin/sh
 exec /usr/lib/$_pkgname/firefox "\$@"
 END
 
   # Replace duplicate binary with wrapper
   # https://bugzilla.mozilla.org/show_bug.cgi?id=658850
-  ln -srf "$pkgdir/usr/bin/$_pkgname" \
-    "$pkgdir/usr/lib/$_pkgname/firefox-bin"
+  ln -srfv "$pkgdir/usr/bin/$_pkgname" "$pkgdir/usr/lib/$_pkgname/firefox-bin"
+
+  # Use system certificates
+  local nssckbi="$pkgdir/usr/lib/$_pkgname/libnssckbi.so"
+  if [[ -e $nssckbi ]]; then
+    ln -srfv "$pkgdir/usr/lib/libnssckbi.so" "$nssckbi"
+  fi
+
+  local sprovider="$pkgdir/usr/share/gnome-shell/search-providers/$_pkgname.search-provider.ini"
+  install -Dvm644 /dev/stdin "$sprovider" <<END
+[Shell Search Provider]
+DesktopId=$_pkgname.desktop
+BusName=org.mozilla.${pkgname//-/}.SearchProvider
+ObjectPath=/org/mozilla/${pkgname//-/}/SearchProvider
+Version=2
+END
+
+  export SOCORRO_SYMBOL_UPLOAD_TOKEN_FILE="$startdir/.crash-stats-api.token"
+  if [[ -f $SOCORRO_SYMBOL_UPLOAD_TOKEN_FILE ]]; then
+    make -C obj uploadsymbols
+  else
+    cp -fvt "$startdir" obj/dist/*crashreporter-symbols-full.tar.zst
+  fi
 }
 
-# vim:set sw=2 et:
+# vim:set sw=2 sts=-1 et:
