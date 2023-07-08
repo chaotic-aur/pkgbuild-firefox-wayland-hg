@@ -10,32 +10,88 @@ pkgname=firefox-wayland-hg
 _pkgname=firefox
 pkgver=r659341.4e0bb3e
 pkgrel=1
-pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, release branding, targeting wayland)"
+pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, release branding, targeting Wayland)"
 arch=(x86_64)
-license=(MPL GPL LGPL)
+license=(
+  GPL
+  LGPL
+  MPL
+)
 url="https://www.mozilla.org/firefox/"
-depends=(gtk3 libxt mime-types dbus-glib
-         ffmpeg nss-hg ttf-font libpulse xorg-server-xwayland
-         libvpx libwebp libjpeg zlib libevent pipewire)
-makedepends=(git-cinnabar unzip zip diffutils yasm mesa imake inetutils
-             xorg-server-xvfb autoconf2.13 rust clang llvm jack nodejs cbindgen nasm
-             python-setuptools lld dump_syms
-             wasi-compiler-rt wasi-libc wasi-libc++ wasi-libc++abi)
-optdepends=('networkmanager: Location detection via available WiFi networks'
-            'libnotify: Notification integration'
-            'pulseaudio: Audio support'
-            'speech-dispatcher: Text-to-Speech'
-            'hunspell-en_US: Spell checking, American English'
-            'xdg-desktop-portal: Screensharing with Wayland')
-options=(!emptydirs !makeflags !strip !lto)
+depends=(
+  gtk3 
+  libxt 
+  mime-types 
+  dbus-glib
+  ffmpeg 
+  nss-hg 
+  ttf-font
+  libpulse 
+  xorg-server-xwayland
+  libvpx 
+  libwebp 
+  libjpeg 
+  zlib 
+  libevent 
+  pipewire
+)
+makedepends=(
+  cbindgen
+  clang
+  diffutils
+  dump_syms
+  imake
+  inetutils
+  jack
+  lld
+  llvm
+  mercurial
+  mesa
+  nasm
+  nodejs
+  python
+  rust
+  unzip
+  wasi-compiler-rt
+  wasi-libc
+  wasi-libc++
+  wasi-libc++abi
+  xorg-server-xvfb
+  yasm
+  zip
+)
+optdepends=(
+  'hunspell-en_US: Spell checking, American English'
+  'libnotify: Notification integration'
+  'networkmanager: Location detection via available WiFi networks'
+  'pulseaudio: Audio support'
+  'speech-dispatcher: Text-to-Speech'
+  'xdg-desktop-portal: Screensharing with Wayland'
+)
+options=(
+  !debug
+  !emptydirs
+  !lto
+  !makeflags
+  !strip
+)
 _repo=https://hg.mozilla.org/mozilla-unified
 conflicts=('firefox')
 provides=('firefox')
-source=("mozilla-unified::git+hg::$_repo#branch=bookmarks/autoland"
-        $_pkgname.desktop $_pkgname-symbolic.svg)
+source=(
+  hg+$_repo
+  $pkgname.desktop
+  identity-icons-brand.svg
+  firefox-install-dir.patch
+)
 sha256sums=('SKIP'
-            'a9e5264257041c0b968425b5c97436ba48e8d294e1a0f02c59c35461ea245c33'
-            '9a1a572dc88014882d54ba2d3079a1cf5b28fa03c5976ed2cb763c93dabbd797')
+            '022e9329fdb4af6267ad32a1398a9ae94a90cbb1e80dcf63e8b19e95490e7a35'
+            'a9b8b4a0a1f4a7b4af77d5fc70c2686d624038909263c795ecc81e0aec7711e9'
+            'c80937969086550237b0e89a02330d438ce17c3764e43cc5d030cb21c2abce5f')
+b2sums=('SKIP'
+        'e79bb7cf9f6aa1e816809f430a72e4d823756f363f635ebccb9a301d716979f3dd95506895798f54371b65b59065ca4c8e66d1dcac449a633da2a28f4bb966b9'
+        '63a8dd9d8910f9efb353bed452d8b4b2a2da435857ccee083fc0c557f8c4c1339ca593b463db320f70387a1b63f1a79e709e9d12c69520993e26d85a3d742e34'
+        'f76eb72c326f347991133c004b252ed2e037e72a7a436012fb1495668d2b9194d836765b58b01ba0bd9f5c4b888ee5ee715bdb458823a2a7822f1b299f4d1948')
 
 # Google API keys (see http://www.chromium.org/developers/how-tos/api-keys)
 # Note: These are for Arch Linux use ONLY. For your own distribution, please
@@ -47,11 +103,27 @@ _google_api_key=AIzaSyDwr302FpOSkGRpLlUpPThNTDPbXcIn_FM
 # Note: These are for Arch Linux use ONLY. For your own distribution, please
 # get your own set of keys. Feel free to contact heftig@archlinux.org for
 # more information.
-_mozilla_api_key=16674381-f021-49de-8622-3021c5942aff
+_mozilla_api_key=e05d56db0a694edc8b5aaebda3f2db6a
 
 pkgver() {
   cd mozilla-unified
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+
+  local version=$(<browser/config/version_display.txt)
+  local date=$(date +%Y%m%d) # Without TZ=UTC, to match systemd timer
+  local counter=1
+  local rev=$(hg id -i -r. | sed 's/+$//')
+
+  local last_rev=${pkgver##*+h} tmp=${pkgver#*+}; tmp=${tmp%+*}
+  local last_date=${tmp%.*} last_counter=${tmp#*.}
+  if [[ $date == $last_date ]]; then
+    if [[ $rev == $last_rev ]]; then
+      counter=$last_counter
+    else
+      counter=$((last_counter + 1))
+    fi
+  fi
+
+  echo $version+$date.$counter+h$rev
 }
 
 prepare() {
