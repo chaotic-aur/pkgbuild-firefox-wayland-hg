@@ -199,10 +199,10 @@ build() {
   cd mozilla-unified
 
   export MOZ_SOURCE_REPO="$_repo"
-  export MOZ_SOURCE_CHANGESET="$(cd $SRCDEST/mozilla-unified; git cinnabar git2hg bookmarks/autoland)"
   export MOZ_NOSPAM=1
   export MOZBUILD_STATE_PATH="$srcdir/mozbuild"
-  export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=none
+  export MOZ_ENABLE_FULL_SYMBOLS=1
+  export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=pip
 
   # LTO/PGO needs more open files
   ulimit -n 4096
