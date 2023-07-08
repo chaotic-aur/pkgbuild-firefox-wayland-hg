@@ -8,7 +8,7 @@
 
 pkgname=firefox-wayland-hg
 _pkgname=firefox-nightly
-pkgver=r659341.4e0bb3e
+pkgver=117.0a1+20230708.2+h47c72d2828f6
 pkgrel=1
 pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, release branding, targeting Wayland)"
 arch=(x86_64)
