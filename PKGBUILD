@@ -5,6 +5,7 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 # Contributor: Ionut Biru <ibiru@archlinux.org>
 # Contributor: Jakub Schmidtke <sjakub@gmail.com>
+# Contributor: Niko Cantero <@niko:conduit.rs (Matrix)>
 
 pkgname=firefox-wayland-hg
 _pkgname=firefox-nightly
