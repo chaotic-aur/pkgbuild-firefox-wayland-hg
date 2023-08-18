@@ -27,6 +27,7 @@ pkgbase = firefox-wayland-hg
 	makedepends = wasi-libc
 	makedepends = wasi-libc++
 	makedepends = wasi-libc++abi
+	makedepends = xorg-server-xvfb
 	makedepends = yasm
 	makedepends = zip
 	depends = dbus-glib

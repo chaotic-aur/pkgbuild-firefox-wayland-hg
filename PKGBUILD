@@ -57,6 +57,7 @@ makedepends=(
   wasi-libc
   wasi-libc++
   wasi-libc++abi
+  xorg-server-xvfb
   yasm
   zip
 )
@@ -229,6 +230,7 @@ END
   ./mach package
   LLVM_PROFDATA=llvm-profdata \
     JARLOG_FILE="$PWD/jarlog" \
+    xvfb-run -s "-screen 0 1920x1080x24 -nolisten local" \
     ./mach python build/pgo/profileserver.py
 
   stat -c "Profile data found (%s bytes)" merged.profdata
