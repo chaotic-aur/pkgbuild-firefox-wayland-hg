@@ -81,7 +81,7 @@ options=(
 )
 _repo=https://hg.mozilla.org/mozilla-unified
 conflicts=('firefox-nightly' 'firefox-hg')
-provides=('firefox')
+provides=('firefox-nightly')
 source=(
   hg+$_repo
   $_pkgname.desktop
