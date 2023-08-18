@@ -80,7 +80,7 @@ options=(
   !strip
 )
 _repo=https://hg.mozilla.org/mozilla-unified
-conflicts=('firefox-nightly')
+conflicts=('firefox-nightly' 'firefox-hg')
 provides=('firefox')
 source=(
   hg+$_repo
