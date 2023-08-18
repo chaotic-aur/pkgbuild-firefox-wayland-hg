@@ -1,39 +1,38 @@
 # Maintainer:  Devin Cofer <ranguvar[at]ranguvar[dot]io>
+# Maintainer:  Niko Cantero <[at]niko:conduit.rs (Matrix)>
 # Contributor: Kyle De'Vir (QuartzDragon) <kyle[dot]devir[at]mykolab[dot]com>
 # Contributor: Jonas Heinrich <onny@project-insanity.org>
 # Contributor: Maxwell Anselm <silverhammermba+aur@gmail.com>
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 # Contributor: Ionut Biru <ibiru@archlinux.org>
 # Contributor: Jakub Schmidtke <sjakub@gmail.com>
-# Contributor: Niko Cantero <@niko:conduit.rs (Matrix)>
 
 pkgname=firefox-wayland-hg
 _pkgname=firefox-nightly
-pkgver=117.0a1+20230708.2+h47c72d2828f6
+pkgver=118.0a1+20230818.2+hf01044248c85
 pkgrel=1
-pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, release branding, targeting Wayland)"
-arch=(x86_64)
+pkgdesc="Standalone web browser from mozilla.org (mozilla-unified hg, nightly branding, targeting wayland)"
+url="https://www.mozilla.org/firefox/channel/#nightly"
+arch=(x86_64) 
 license=(
   GPL
   LGPL
   MPL
 )
-url="https://www.mozilla.org/firefox/"
 depends=(
-  gtk3 
-  libxt 
-  mime-types 
   dbus-glib
-  ffmpeg 
-  nss-hg 
+  ffmpeg
+  gtk3
+  icu
+  libpulse
+  mime-types
+  nss
   ttf-font
-  libpulse 
-  xorg-server-xwayland
-  libvpx 
-  libwebp 
-  libjpeg 
-  zlib 
-  libevent 
+  libvpx
+  libwebp
+  libjpeg
+  zlib
+  libevent
   pipewire
 )
 makedepends=(
@@ -45,6 +44,7 @@ makedepends=(
   inetutils
   jack
   lld
+  mold
   llvm
   mercurial
   mesa
@@ -57,7 +57,6 @@ makedepends=(
   wasi-libc
   wasi-libc++
   wasi-libc++abi
-  xorg-server-xvfb
   yasm
   zip
 )
@@ -78,12 +77,17 @@ options=(
 )
 _repo=https://hg.mozilla.org/mozilla-unified
 conflicts=('firefox-nightly')
-provides=('firefox-nightly')
+provides=('firefox')
 source=(
   hg+$_repo
   $_pkgname.desktop
   identity-icons-brand.svg
   firefox-install-dir.patch
+)
+validpgpkeys=(
+  # Mozilla Software Releases <release@mozilla.com>
+  # https://blog.mozilla.org/security/2023/05/11/updated-gpg-key-for-signing-firefox-releases/
+  14F26682D0916CDD81E37B6D61B7B526D98F0353
 )
 sha256sums=('SKIP'
             '022e9329fdb4af6267ad32a1398a9ae94a90cbb1e80dcf63e8b19e95490e7a35'
@@ -130,19 +134,19 @@ pkgver() {
 prepare() {
   mkdir mozbuild
   cd mozilla-unified
- 
+
   # Change install dir from 'firefox' to 'firefox-nightly'
   patch -Np1 -i ../firefox-install-dir.patch
-  
+
   echo -n "$_google_api_key" >google-api-key
   echo -n "$_mozilla_api_key" >mozilla-api-key
 
   #
   # If you want to disable LTO/PGO (compile too long), delete the lines below beginning with
-  #`ac_add_options --enable-lto' and ending with 'export RANLIB=llvm-ranlib`
+  # `ac_add_options --enable-lto' and ending with 'export RANLIB=llvm-ranlib`
   #
 
-  cat >../mozconfig <<END
+  cat >.mozconfig <<END
 ac_add_options --enable-application=browser
 mk_add_options MOZ_OBJDIR=${PWD@Q}/obj
 
@@ -151,18 +155,18 @@ ac_add_options --enable-release
 ac_add_options --enable-hardening
 ac_add_options --enable-optimize
 ac_add_options --enable-rust-simd
-ac_add_options --enable-linker=lld
+ac_add_options --enable-linker=mold
 ac_add_options --disable-elf-hack
 ac_add_options --disable-bootstrap
-ac_add_options --disable-tests
 ac_add_options --with-wasi-sysroot=/usr/share/wasi-sysroot
-ac_add_options --enable-lto
-ac_add_options MOZ_PGO=1
-export CC=clang
-export CXX=clang++
+ac_add_options --enable-default-toolkit=cairo-gtk3-wayland-only
+
 export AR=llvm-ar
+export CC='clang'
+export CXX='clang++'
 export NM=llvm-nm
 export RANLIB=llvm-ranlib
+export MOZ_ENABLE_WAYLAND=1
 
 # Branding
 ac_add_options --with-branding=browser/branding/nightly
@@ -171,7 +175,7 @@ ac_add_options --with-distribution-id=org.archlinux
 ac_add_options --with-unsigned-addon-scopes=app,system
 ac_add_options --allow-addon-sideload
 export MOZILLA_OFFICIAL=1
-export MOZ_APP_REMOTINGNAME=${pkgname//-/}
+export MOZ_APP_REMOTINGNAME=${_pkgname//-/}
 
 # Keys
 ac_add_options --with-google-location-service-api-keyfile=${PWD@Q}/google-api-key
@@ -184,15 +188,22 @@ ac_add_options --with-system-nss
 ac_add_options --with-system-libvpx
 ac_add_options --with-system-webp
 ac_add_options --with-system-libevent
+ac_add_options --with-system-icu
 ac_add_options --with-system-zlib
 ac_add_options --with-system-jpeg
 
+ac_add_options --enable-optimize=-O3
 # Features
 ac_add_options --enable-alsa
 ac_add_options --enable-jack
 ac_add_options --enable-crashreporter
 ac_add_options --disable-updater
-ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
+ac_add_options --disable-tests
+
+# Disables Telemetry by Default
+mk_add_options MOZ_DATA_REPORTING=0
+mk_add_options MOZ_SERVICES_HEALTHREPORT=0
+mk_add_options MOZ_TELEMETRY_REPORTING=0
 END
 }
 
@@ -207,10 +218,10 @@ build() {
 
   # LTO/PGO needs more open files
   ulimit -n 4096
-
+  
   # Do 3-tier PGO
   echo "Building instrumented browser..."
-  cat >.mozconfig ../mozconfig - <<END
+  cat >../mozconfig - <<END
 ac_add_options --enable-profile-generate=cross
 END
   ./mach build
@@ -233,7 +244,7 @@ END
 
   echo "Building optimized browser..."
   cat >.mozconfig ../mozconfig - <<END
-ac_add_options --enable-lto=cross
+ac_add_options --enable-lto=cross,full
 ac_add_options --enable-profile-use=cross
 ac_add_options --with-pgo-profile-path=${PWD@Q}/merged.profdata
 ac_add_options --with-pgo-jarlog=${PWD@Q}/jarlog
@@ -316,8 +327,8 @@ END
   install -Dvm644 /dev/stdin "$sprovider" <<END
 [Shell Search Provider]
 DesktopId=$_pkgname.desktop
-BusName=org.mozilla.${pkgname//-/}.SearchProvider
-ObjectPath=/org/mozilla/${pkgname//-/}/SearchProvider
+BusName=org.mozilla.${_pkgname//-/}.SearchProvider
+ObjectPath=/org/mozilla/${_pkgname//-/}/SearchProvider
 Version=2
 END
 
