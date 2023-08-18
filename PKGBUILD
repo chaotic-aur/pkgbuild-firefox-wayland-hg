@@ -57,11 +57,11 @@ makedepends=(
   wasi-libc
   wasi-libc++
   wasi-libc++abi
-  # Cage, Pixman, Polkit, and XWayland are required for 3 TIER PGO:
-  # cage
-  # pixman
-  # polkit
-  # xorg-server-xwayland
+  # Cage, Pixman, Polkit, and XWayland are required for PGO:
+  cage
+  pixman
+  polkit
+  xorg-server-xwayland
   yasm
   zip
 )
@@ -223,6 +223,36 @@ build() {
   # LTO/PGO needs more open files
   ulimit -n 4096
   
+  # Do 3-tier PGO
+  echo "Building instrumented browser..."
+  cat >../mozconfig - <<END
+ac_add_options --enable-profile-generate=cross
+END
+  ./mach build
+
+  echo "Profiling instrumented browser..."
+  ./mach package
+  LLVM_PROFDATA=llvm-profdata \
+    JARLOG_FILE="$PWD/jarlog" \
+    XDG_RUNTIME_DIR="$srcdir" WLR_BACKENDS=headless WLR_RENDERER=pixman cage \ 
+    ./mach python build/pgo/profileserver.py
+
+  stat -c "Profile data found (%s bytes)" merged.profdata
+  test -s merged.profdata
+
+  stat -c "Jar log found (%s bytes)" jarlog
+  test -s jarlog
+
+  echo "Removing instrumented browser..."
+  ./mach clobber
+
+  echo "Building optimized browser..."
+  cat >.mozconfig ../mozconfig - <<END
+ac_add_options --enable-lto=cross,full
+ac_add_options --enable-profile-use=cross
+ac_add_options --with-pgo-profile-path=${PWD@Q}/merged.profdata
+ac_add_options --with-pgo-jarlog=${PWD@Q}/jarlog
+END
   ./mach build
 
   echo "Building symbol archive..."
