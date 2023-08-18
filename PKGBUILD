@@ -44,7 +44,7 @@ makedepends=(
   inetutils
   jack
   lld
-  mold
+  # mold - relook at the potential of the Mold linker in the future
   llvm
   mercurial
   mesa
