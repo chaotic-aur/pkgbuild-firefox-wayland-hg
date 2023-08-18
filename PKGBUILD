@@ -57,7 +57,11 @@ makedepends=(
   wasi-libc
   wasi-libc++
   wasi-libc++abi
-  gamescope
+  # Cage, Pixman, Polkit, and XWayland are required for PGO:
+  cage
+  pixman
+  polkit
+  xorg-server-xwayland
   yasm
   zip
 )
@@ -230,7 +234,7 @@ END
   ./mach package
   LLVM_PROFDATA=llvm-profdata \
     JARLOG_FILE="$PWD/jarlog" \
-    gamescope -w 1920 -h 1080 -r 60 --headless --expose-wayland \
+    XDG_RUNTIME_DIR=$(mktemp -d) WLR_BACKENDS=headless WLR_RENDERER=pixman cage \ 
     ./mach python build/pgo/profileserver.py
 
   stat -c "Profile data found (%s bytes)" merged.profdata
