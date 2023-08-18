@@ -234,7 +234,7 @@ END
   ./mach package
   LLVM_PROFDATA=llvm-profdata \
     JARLOG_FILE="$PWD/jarlog" \
-    XDG_RUNTIME_DIR=$(mktemp -d) WLR_BACKENDS=headless WLR_RENDERER=pixman cage \ 
+    XDG_RUNTIME_DIR="$srcdir" WLR_BACKENDS=headless WLR_RENDERER=pixman cage \ 
     ./mach python build/pgo/profileserver.py
 
   stat -c "Profile data found (%s bytes)" merged.profdata
