@@ -69,7 +69,6 @@ optdepends=(
   'xdg-desktop-portal: Screensharing with Wayland'
 )
 options=(
-  !debug
   !emptydirs
   !lto
   !makeflags
