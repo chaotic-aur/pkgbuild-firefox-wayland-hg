@@ -31,6 +31,7 @@ depends=(
   icu
   libpulse
   mime-types
+  #nspr
   #nss
   ttf-font
   libvpx
@@ -182,7 +183,7 @@ ac_add_options --with-google-safebrowsing-api-keyfile=${PWD@Q}/google-api-key
 ac_add_options --with-mozilla-api-keyfile=${PWD@Q}/mozilla-api-key
 
 # System Libraries
-ac_add_options --with-system-nspr
+#ac_add_options --with-system-nspr
 #ac_add_options --with-system-nss
 ac_add_options --with-system-libvpx
 ac_add_options --with-system-webp
