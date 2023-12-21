@@ -11,14 +11,24 @@
 # three-stage profile-guided optimization
 : ${_build_pgo:=false}
 
-# pkgtype: hg or wayland-hg
-: ${_pkgtype:=wayland-hg}
+# use mozilla-central repo, instead of mozilla-unified
+: ${_build_nightly:=false}
 
+# target wayland only
+: ${_build_wayland:=true}
 
-## --
-pkgname="firefox${_pkgtype:+-$_pkgtype}"
+# modify package name
+: ${_build_hg:=true}
+
+# -----
+[[ "${_build_nightly::1}" == "t" ]] && _pkgtype+="-nightly"
+[[ "${_build_wayland::1}" == "t" ]] && _pkgtype+="-wayland"
+[[ "${_build_hg::1}" == "t" ]] && _pkgtype+="-hg"
+
+## -----
+pkgname="firefox${_pkgtype:-}"
 _pkgname=firefox-nightly
-pkgver=121.0a1+20231117.1+h0dfaf13a5787
+pkgver=123.0a1+20231221.1+h37657c769166
 pkgrel=1
 pkgdesc="Standalone web browser from mozilla.org"
 url="https://www.mozilla.org/firefox/channel/#nightly"
@@ -32,7 +42,7 @@ depends=(
   dbus-glib
   ffmpeg
   gtk3
-  icu
+  #icu
   libpulse
   mime-types
   nspr-hg
@@ -79,8 +89,14 @@ optdepends=(
   'xdg-desktop-portal: Screensharing with Wayland'
 )
 
-if [[ x"${_pkgtype::1}" == "xh" ]] ; then
-  pkgdesc+=" (mozilla-unified hg, nightly branding, targeting wayland and x11)"
+if [[ "" == "t" ]] ; then
+  pkgdesc+=" - nightly"
+else
+  pkgdesc+=" - mozilla-unified hg, nightly branding"
+fi
+
+if [[ "${_build_wayland::1}" != "t" ]] ; then
+  pkgdesc+=", targeting wayland and x11"
 
   depends+=(
     libxss
@@ -90,9 +106,9 @@ if [[ x"${_pkgtype::1}" == "xh" ]] ; then
     xorg-server-xvfb
   )
 else
-  pkgdesc+=" (mozilla-unified hg, nightly branding, targeting wayland)"
+  pkgdesc+=", targeting wayland"
 
-  if [[ x"${_enable_pgo::1}" == "xt" ]] ; then
+  if [[ "${_enable_pgo::1}" == "t" ]] ; then
     makedepends+=(
       cage
       pixman
@@ -112,7 +128,12 @@ options=(
   !strip
 )
 
-_repo=https://hg.mozilla.org/mozilla-unified
+if [[ "${_build_nightly::1}" == "t" ]] ; then
+  _repo="https://hg.mozilla.org/mozilla-central"
+else
+  _repo="https://hg.mozilla.org/mozilla-unified"
+fi
+
 source=(
   hg+$_repo
   $_pkgname.desktop
@@ -124,14 +145,12 @@ validpgpkeys=(
   # https://blog.mozilla.org/security/2023/05/11/updated-gpg-key-for-signing-firefox-releases/
   14F26682D0916CDD81E37B6D61B7B526D98F0353
 )
-sha256sums=('SKIP'
-            '022e9329fdb4af6267ad32a1398a9ae94a90cbb1e80dcf63e8b19e95490e7a35'
-            'a9b8b4a0a1f4a7b4af77d5fc70c2686d624038909263c795ecc81e0aec7711e9'
-            'c80937969086550237b0e89a02330d438ce17c3764e43cc5d030cb21c2abce5f')
-b2sums=('SKIP'
-        'e79bb7cf9f6aa1e816809f430a72e4d823756f363f635ebccb9a301d716979f3dd95506895798f54371b65b59065ca4c8e66d1dcac449a633da2a28f4bb966b9'
-        '63a8dd9d8910f9efb353bed452d8b4b2a2da435857ccee083fc0c557f8c4c1339ca593b463db320f70387a1b63f1a79e709e9d12c69520993e26d85a3d742e34'
-        'f76eb72c326f347991133c004b252ed2e037e72a7a436012fb1495668d2b9194d836765b58b01ba0bd9f5c4b888ee5ee715bdb458823a2a7822f1b299f4d1948')
+sha256sums=(
+  'SKIP'
+  '022e9329fdb4af6267ad32a1398a9ae94a90cbb1e80dcf63e8b19e95490e7a35'
+  'a9b8b4a0a1f4a7b4af77d5fc70c2686d624038909263c795ecc81e0aec7711e9'
+  'c80937969086550237b0e89a02330d438ce17c3764e43cc5d030cb21c2abce5f'
+)
 
 # Google API keys (see http://www.chromium.org/developers/how-tos/api-keys)
 # Note: These are for Arch Linux use ONLY. For your own distribution, please
@@ -146,7 +165,7 @@ _google_api_key=AIzaSyDwr302FpOSkGRpLlUpPThNTDPbXcIn_FM
 _mozilla_api_key=e05d56db0a694edc8b5aaebda3f2db6a
 
 pkgver() {
-  cd mozilla-unified
+  cd "${_repo##*/}"
 
   local version=$(<browser/config/version_display.txt)
   local date=$(date +%Y%m%d) # Without TZ=UTC, to match systemd timer
@@ -168,7 +187,7 @@ pkgver() {
 
 prepare() {
   mkdir mozbuild
-  cd mozilla-unified
+  cd "${_repo##*/}"
 
   # Change install dir from 'firefox' to 'firefox-nightly'
   patch -Np1 -i ../firefox-install-dir.patch
@@ -212,7 +231,7 @@ ac_add_options --with-system-nss
 ac_add_options --with-system-libvpx
 ac_add_options --with-system-webp
 ac_add_options --with-system-libevent
-ac_add_options --with-system-icu
+#ac_add_options --with-system-icu
 ac_add_options --with-system-zlib
 ac_add_options --with-system-jpeg
 
@@ -231,7 +250,7 @@ mk_add_options MOZ_TELEMETRY_REPORTING=0
 # Other
 END
 
-  if [[ x"${_pkgtype::1}" == "xh" ]] ; then
+  if [[ "${_build_wayland::1}" != "t" ]] ; then
     echo >>../mozconfig "ac_add_options --enable-default-toolkit=cairo-gtk3-x11-wayland"
   else
     echo >>../mozconfig "ac_add_options --enable-default-toolkit=cairo-gtk3-wayland-only"
@@ -239,7 +258,7 @@ END
 }
 
 build() {
-  cd mozilla-unified
+  cd "${_repo##*/}"
 
   export MOZ_SOURCE_REPO="$_repo"
   export MOZ_NOSPAM=1
@@ -250,7 +269,7 @@ build() {
   # LTO/PGO needs more open files
   ulimit -n 4096
 
-  if [[ x"${_build_pgo::1}" == "xt" ]] ; then
+  if [[ "${_build_pgo::1}" == "t" ]] ; then
     # Do 3-tier PGO
     echo "Building instrumented browser..."
     cat >.mozconfig ../mozconfig - <<END
@@ -299,7 +318,7 @@ END
 }
 
 package() {
-  cd mozilla-unified
+  cd "${_repo##*/}"
   DESTDIR="$pkgdir" ./mach install
 
   local vendorjs="$pkgdir/usr/lib/$_pkgname/browser/defaults/preferences/vendor.js"
