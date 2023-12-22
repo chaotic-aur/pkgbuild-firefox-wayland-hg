@@ -28,32 +28,28 @@
 ## -----
 pkgname="firefox${_pkgtype:-}"
 _pkgname=firefox-nightly
-pkgver=123.0a1+20231221.1+h37657c769166
+pkgver=123.0a1+20231222.2+h8481bdfea5c4
 pkgrel=1
 pkgdesc="Standalone web browser from mozilla.org"
 url="https://www.mozilla.org/firefox/channel/#nightly"
+license=('MPL-2.0')
 arch=(x86_64)
-license=(
-  GPL
-  LGPL
-  MPL
-)
+
 depends=(
-  dbus-glib
+  dbus
   ffmpeg
   gtk3
-  #icu
+  libevent
+  libjpeg
   libpulse
+  libvpx
+  libwebp
   mime-types
   nspr-hg
   nss-hg
-  ttf-font
-  libvpx
-  libwebp
-  libjpeg
-  zlib
-  libevent
   pipewire
+  ttf-font
+  zlib
 )
 makedepends=(
   cbindgen
@@ -64,7 +60,6 @@ makedepends=(
   inetutils
   jack
   lld
-  # mold - relook at the potential of the Mold linker in the future
   llvm
   mercurial
   mesa
@@ -89,37 +84,32 @@ optdepends=(
   'xdg-desktop-portal: Screensharing with Wayland'
 )
 
-if [[ "" == "t" ]] ; then
+if [[ "${_build_nightly::1}" == "t" ]] ; then
   pkgdesc+=" - nightly"
 else
   pkgdesc+=" - mozilla-unified hg, nightly branding"
 fi
 
-if [[ "${_build_wayland::1}" != "t" ]] ; then
+if [[ "${_build_wayland::1}" == "t" ]] ; then
+  pkgdesc+=", targeting wayland"
+else
   pkgdesc+=", targeting wayland and x11"
 
   depends+=(
     libxss
     libxt
   )
-  makedepends+=(
-    xorg-server-xvfb
-  )
-else
-  pkgdesc+=", targeting wayland"
-
-  if [[ "${_enable_pgo::1}" == "t" ]] ; then
-    makedepends+=(
-      cage
-      pixman
-      polkit
-      xorg-server-xwayland
-    )
-  fi
 fi
 
-conflicts=('firefox-nightly')
+if [[ "${_build_pgo::1}" == "t" ]] ; then
+  makedepends+=(
+    weston
+    xwayland-run # AUR
+  )
+fi
+
 provides=('firefox-nightly')
+conflicts=('firefox-nightly')
 
 options=(
   !emptydirs
@@ -202,13 +192,11 @@ mk_add_options MOZ_OBJDIR=${PWD@Q}/obj
 ac_add_options --prefix=/usr
 ac_add_options --enable-release
 ac_add_options --enable-hardening
-ac_add_options --enable-optimize=-O3
 ac_add_options --enable-rust-simd
 ac_add_options --enable-linker=lld
 ac_add_options --disable-elf-hack
 ac_add_options --disable-bootstrap
 ac_add_options --with-wasi-sysroot=/usr/share/wasi-sysroot
-
 export MOZ_ENABLE_WAYLAND=1
 
 # Branding
@@ -231,7 +219,6 @@ ac_add_options --with-system-nss
 ac_add_options --with-system-libvpx
 ac_add_options --with-system-webp
 ac_add_options --with-system-libevent
-#ac_add_options --with-system-icu
 ac_add_options --with-system-zlib
 ac_add_options --with-system-jpeg
 
@@ -248,23 +235,29 @@ mk_add_options MOZ_SERVICES_HEALTHREPORT=0
 mk_add_options MOZ_TELEMETRY_REPORTING=0
 
 # Other
+export AR=llvm-ar
+export CC='clang'
+export CXX='clang++'
+export NM=llvm-nm
+export RANLIB=llvm-ranlib
 END
 
-  if [[ "${_build_wayland::1}" != "t" ]] ; then
-    echo >>../mozconfig "ac_add_options --enable-default-toolkit=cairo-gtk3-x11-wayland"
-  else
+  if [[ "${_build_wayland::1}" == "t" ]] ; then
     echo >>../mozconfig "ac_add_options --enable-default-toolkit=cairo-gtk3-wayland-only"
+  else
+    echo >>../mozconfig "ac_add_options --enable-default-toolkit=cairo-gtk3-x11-wayland"
   fi
 }
 
 build() {
   cd "${_repo##*/}"
 
-  export MOZ_SOURCE_REPO="$_repo"
-  export MOZ_NOSPAM=1
-  export MOZBUILD_STATE_PATH="$srcdir/mozbuild"
-  export MOZ_ENABLE_FULL_SYMBOLS=1
   export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=pip
+  export MOZBUILD_STATE_PATH="$srcdir/mozbuild"
+  export MOZ_BUILD_DATE="$(date -u${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH} +%Y%m%d%H%M%S)"
+  export MOZ_ENABLE_FULL_SYMBOLS=1
+  export MOZ_NOSPAM=1
+  export MOZ_SOURCE_REPO="$_repo"
 
   # LTO/PGO needs more open files
   ulimit -n 4096
@@ -279,36 +272,41 @@ END
 
     echo "Profiling instrumented browser..."
     ./mach package
-    LLVM_PROFDATA=llvm-profdata \
-      JARLOG_FILE="$PWD/jarlog" \
-      xvfb-run -s "-screen 0 1920x1080x24 -nolisten local" \
-      ./mach python build/pgo/profileserver.py
 
-    stat -c "Profile data found (%s bytes)" merged.profdata
-    test -s merged.profdata
-
-    stat -c "Jar log found (%s bytes)" jarlog
-    test -s jarlog
+    LLVM_PROFDATA=llvm-profdata JARLOG_FILE="$PWD/jarlog" \
+      wlheadless-run -c weston --width=1920 --height=1080 \
+      -- ./mach python build/pgo/profileserver.py
 
     echo "Removing instrumented browser..."
     ./mach clobber
 
     echo "Building optimized browser..."
     cat >.mozconfig ../mozconfig - <<END
-ac_add_options --enable-lto=cross,full
-ac_add_options --enable-profile-use=cross
-ac_add_options --with-pgo-profile-path=${PWD@Q}/merged.profdata
-ac_add_options --with-pgo-jarlog=${PWD@Q}/jarlog
+ac_add_options --enable-optimize=-O3
+ac_add_options --enable-lto=cross
 END
+
+    if [[ -s merged.profdata ]] ; then
+      stat -c "Profile data found (%s bytes)" merged.profdata
+      echo "ac_add_options --enable-profile-use=cross" >> .mozconfig
+      echo "ac_add_options --with-pgo-profile-path='${PWD@Q}/merged.profdata'" >> .mozconfig
+    else
+      echo "Profile data not found."
+    fi
+
+    if [[ -s jarlog ]] ; then
+      stat -c "Jar log found (%s bytes)" jarlog
+      echo "ac_add_options --with-pgo-jarlog='${PWD@Q}/jarlog'" >> .mozconfig
+    else
+      echo "Jar log not found."
+    fi
+
     ./mach build
   else
     echo "Building browser..."
     cat >.mozconfig ../mozconfig - <<END
-export AR=llvm-ar
-export CC='clang'
-export CXX='clang++'
-export NM=llvm-nm
-export RANLIB=llvm-ranlib
+ac_add_options --enable-optimize=-O3
+ac_add_options --enable-lto=cross
 END
     ./mach build
   fi
