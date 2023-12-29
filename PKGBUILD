@@ -20,12 +20,11 @@
 # modify package name
 : ${_build_hg:=true}
 
-# -----
 [[ "${_build_nightly::1}" == "t" ]] && _pkgtype+="-nightly"
 [[ "${_build_wayland::1}" == "t" ]] && _pkgtype+="-wayland"
 [[ "${_build_hg::1}" == "t" ]] && _pkgtype+="-hg"
 
-## -----
+## basic info
 pkgname="firefox${_pkgtype:-}"
 _pkgname=firefox-nightly
 pkgver=123.0a1+20231228.1+ha0075cc44476
@@ -191,6 +190,8 @@ mk_add_options MOZ_OBJDIR=${PWD@Q}/obj
 ac_add_options --prefix=/usr
 ac_add_options --enable-release
 ac_add_options --enable-hardening
+ac_add_options --enable-optimize=-O3
+ac_add_options --enable-lto=cross,full
 ac_add_options --enable-rust-simd
 ac_add_options --enable-wasm-simd
 ac_add_options --enable-linker=lld
@@ -281,10 +282,7 @@ END
     ./mach clobber
 
     echo "Building optimized browser..."
-    cat >.mozconfig ../mozconfig - <<END
-ac_add_options --enable-optimize=-O3
-ac_add_options --enable-lto=cross,full
-END
+    cat >.mozconfig ../mozconfig
 
     if [[ -s merged.profdata ]] ; then
       stat -c "Profile data found (%s bytes)" merged.profdata
@@ -304,10 +302,7 @@ END
     ./mach build
   else
     echo "Building browser..."
-    cat >.mozconfig ../mozconfig - <<END
-ac_add_options --enable-optimize=-O3
-ac_add_options --enable-lto=cross,full
-END
+    cat >.mozconfig ../mozconfig
     ./mach build
   fi
 
