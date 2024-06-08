@@ -12,7 +12,7 @@
 : ${_build_pgo:=true}
 
 # reuse existing PGO profile
-: ${_build_pgo_reuse:=true}
+: ${_build_pgo_reuse:=try}
 
 # package debug symbols for upload
 : ${_build_symbols:=false}
@@ -36,7 +36,7 @@
 ## basic info
 pkgname="firefox${_pkgtype:-}"
 _pkgname=firefox-nightly
-pkgver=128.0a1+20240526.1+h12502ed91fe7
+pkgver=128.0a1+20240608.1+hf8b2b22126e3
 pkgrel=1
 pkgdesc="Standalone web browser from mozilla.org"
 url="https://www.mozilla.org/firefox/channel/#nightly"
